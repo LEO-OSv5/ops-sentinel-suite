@@ -1,6 +1,6 @@
 # OPS Sentinel Suite
 
-Machine-agnostic automation suite for OPS-connected machines in the AETHER ecosystem.
+Machine-agnostic automation suite for OPS-connected machines in the AETHER ecosystem and Any Machines in need of such.
 
 ## Overview
 
