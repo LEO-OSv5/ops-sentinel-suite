@@ -9,10 +9,10 @@
 #           machine detection, color codes, threshold defaults
 #
 # Part of: OPS Sentinel Suite (https://github.com/LEO-OSv5/ops-sentinel-suite)
-# Version: 0.1.0
+# Version: 0.2.0
 # ================================================================================
 
-SENTINEL_VERSION="0.1.0"
+SENTINEL_VERSION="0.2.0"
 
 # =============================================================================
   # GUARD: Prevent direct execution — this file is meant to be sourced
@@ -156,3 +156,19 @@ SENTINEL_VERSION="0.1.0"
   MONITOR_INTERVAL="${MONITOR_INTERVAL:-300}"
   ENFORCER_INTERVAL="${ENFORCER_INTERVAL:-600}"
   ALERT_COOLDOWN="${ALERT_COOLDOWN:-1800}"
+
+  # =============================================================================
+  # CONFIG LOADER
+  # =============================================================================
+  # Priority: explicit arg > user config > repo default
+  # Sourcing a config file overrides the threshold defaults above.
+  load_config() {
+      local config_file="${1:-}"
+      if [[ -n "$config_file" ]] && [[ -f "$config_file" ]]; then
+          source "$config_file"
+      elif [[ -f "$SENTINEL_CONFIG/sentinel.conf" ]]; then
+          source "$SENTINEL_CONFIG/sentinel.conf"
+      elif [[ -f "$SENTINEL_HOME/sentinel.conf" ]]; then
+          source "$SENTINEL_HOME/sentinel.conf"
+      fi
+  }
