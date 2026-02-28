@@ -22,6 +22,7 @@
 #   _ws_services()       — JSON array of service status objects
 #   _ws_top_processes()  — JSON array of top 10 processes by RSS
 #   _ws_backups()        — JSON: ops_sync, ops_mini, github_stale
+#   _ws_predictions()    — JSON: swap/disk forecasts, suggested kills, warnings
 #
 # Part of: OPS Sentinel Suite
 # ================================================================================
@@ -366,6 +367,93 @@ _ws_backups() {
     echo "{\"ops_sync\":\"${sync_status}\",\"ops_mini\":{\"mounted\":${mini_mounted},\"stale\":${mini_stale}},\"github_stale\":${github_stale}}"
 }
 
+
+# =============================================================================
+# _ws_predictions — Predictive analytics from history + actions
+# =============================================================================
+# Analyzes last 30 history.jsonl entries for trends. Checks actions.jsonl
+# for repeat kills. Returns forecasts + suggestions.
+# Returns: {"swap_full_in_minutes":N|null,"disk_full_in_days":N|null,
+#           "suggested_kills":[...],"warnings":[...]}
+# =============================================================================
+_ws_predictions() {
+    local history_file="$SENTINEL_LOGS/history.jsonl"
+    local actions_file="$SENTINEL_LOGS/actions.jsonl"
+
+    if ! command -v python3 &>/dev/null || [[ ! -f "$history_file" ]]; then
+        echo '{"swap_full_in_minutes":null,"disk_full_in_days":null,"suggested_kills":[],"warnings":[]}'
+        return
+    fi
+
+    python3 -c "
+import json, sys
+
+history_file = '$history_file'
+actions_file = '$actions_file'
+swap_crit = ${SWAP_CRITICAL_MB:-4096}
+disk_crit = ${DISK_CRITICAL_GB:-5}
+
+lines = []
+try:
+    with open(history_file) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try: lines.append(json.loads(line))
+                except: pass
+except: pass
+
+lines = lines[-30:]
+pred = {'swap_full_in_minutes': None, 'disk_full_in_days': None, 'suggested_kills': [], 'warnings': []}
+
+if len(lines) >= 5:
+    swaps = [l.get('swap', 0) for l in lines]
+    n = len(swaps)
+    slope = (swaps[-1] - swaps[0]) / max(n, 1)
+    if slope > 0 and swaps[-1] < 100:
+        mins = int((100 - swaps[-1]) / slope)
+        if 0 < mins < 1440:
+            pred['swap_full_in_minutes'] = mins
+            if mins < 60:
+                pred['warnings'].append('Swap trending to full in ~' + str(mins) + ' min')
+
+    frees = [l.get('free_mb', 0) for l in lines]
+    if frees and frees[-1] < 100:
+        pred['warnings'].append('Free memory critically low: ' + str(frees[-1]) + 'MB')
+
+    disks = [l.get('disk', 0) for l in lines]
+    if len(disks) >= 5:
+        d_slope = (disks[-1] - disks[0]) / max(n, 1)
+        if d_slope > 0 and disks[-1] < 100:
+            d_mins = int((100 - disks[-1]) / d_slope)
+            d_days = d_mins // 1440
+            if 0 < d_days < 365:
+                pred['disk_full_in_days'] = d_days
+
+try:
+    kills = {}
+    with open(actions_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line: continue
+            try:
+                a = json.loads(line)
+                if a.get('type') == 'kill':
+                    t = a.get('target', '')
+                    freed = a.get('freed_mb', 0) or a.get('details', {}).get('freed_mb', 0)
+                    if t not in kills: kills[t] = {'count': 0, 'total_freed': 0}
+                    kills[t]['count'] += 1
+                    kills[t]['total_freed'] += freed
+            except: pass
+    for t, d in sorted(kills.items(), key=lambda x: x[1]['total_freed'], reverse=True)[:3]:
+        avg = d['total_freed'] // max(d['count'], 1)
+        pred['suggested_kills'].append({'name': t, 'avg_freed_mb': avg, 'reason': 'Killed ' + str(d['count']) + 'x, avg freed ~' + str(avg) + 'MB'})
+except: pass
+
+print(json.dumps(pred))
+" 2>/dev/null || echo '{"swap_full_in_minutes":null,"disk_full_in_days":null,"suggested_kills":[],"warnings":[]}'
+}
+
 # =============================================================================
 # write_status — Main function: write status.json + append history.jsonl
 # =============================================================================
@@ -392,6 +480,10 @@ write_status() {
     procs=$(_ws_top_processes)
     backups=$(_ws_backups)
 
+    # Predictions engine
+    local predictions_json
+    predictions_json=$(_ws_predictions)
+
     # Pressure state
     local pressure_gate="false"
     local phase1_critical="false"
@@ -401,7 +493,7 @@ write_status() {
     fi
 
     # Build status.json
-    local status_json="{\"timestamp\":\"${timestamp}\",\"cycle\":${cycle},\"machine\":\"${machine}\",\"memory\":${mem},\"swap\":${swap},\"disk\":${disk},\"load\":${load},\"network\":${net},\"services\":${services},\"backups\":${backups},\"top_processes\":${procs},\"pressure_gate\":${pressure_gate},\"phase1_critical\":${phase1_critical},\"predictions\":{\"swap_full_in_minutes\":null,\"disk_full_in_days\":null,\"suggested_kills\":[],\"warnings\":[]}}"
+    local status_json="{\"timestamp\":\"${timestamp}\",\"cycle\":${cycle},\"machine\":\"${machine}\",\"memory\":${mem},\"swap\":${swap},\"disk\":${disk},\"load\":${load},\"network\":${net},\"services\":${services},\"backups\":${backups},\"top_processes\":${procs},\"pressure_gate\":${pressure_gate},\"phase1_critical\":${phase1_critical},\"predictions\":${predictions_json}}"
 
     # Atomic write: tmp file + mv
     local tmp_file="${SENTINEL_LOGS}/status.json.tmp.$$"

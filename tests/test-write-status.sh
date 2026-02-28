@@ -412,7 +412,37 @@ guard_output=$(bash "$REPO_DIR/scripts/lib/write-status.sh" 2>&1 || true)
 assert_contains "$guard_output" "ERROR" "direct execution prints ERROR"
 assert_contains "$guard_output" "sourced" "direct execution mentions sourcing"
 
+
 # =============================================================================
+# TEST 21: predictions populated after history
+# =============================================================================
+echo ""
+echo "  --- Test 21: predictions with history ---"
+reset_test_state
+
+# Write 30 history lines with increasing swap
+for i in $(seq 1 30); do
+    echo "{\"t\":\"2026-02-28T00:$(printf '%02d' $i):00Z\",\"mem\":$((80 + i/3)),\"swap\":$((50 + i)),\"disk\":74,\"load\":30,\"free_mb\":$((200 - i*5))}" >> "$SENTINEL_LOGS/history.jsonl"
+done
+CYCLE_COUNT=100
+write_status
+pred=$(/opt/homebrew/bin/python3 -c "import json; d=json.load(open('$SENTINEL_LOGS/status.json')); print(json.dumps(d.get('predictions', {})))")
+assert_contains "$pred" "swap_full_in_minutes" "predictions has swap forecast"
+assert_contains "$pred" "warnings" "predictions has warnings array"
+
+# =============================================================================
+# TEST 22: predictions with actions history
+# =============================================================================
+echo ""
+echo "  --- Test 22: predictions with kill history ---"
+
+echo '{"t":"2026-02-28T00:00:00Z","type":"kill","target":"ollama","freed_mb":1200}' > "$SENTINEL_LOGS/actions.jsonl"
+echo '{"t":"2026-02-28T00:01:00Z","type":"kill","target":"ollama","freed_mb":1500}' >> "$SENTINEL_LOGS/actions.jsonl"
+write_status
+pred2=$(/opt/homebrew/bin/python3 -c "import json; d=json.load(open('$SENTINEL_LOGS/status.json')); print(json.dumps(d.get('predictions', {})))")
+assert_contains "$pred2" "suggested_kills" "predictions has suggested_kills"
+assert_contains "$pred2" "ollama" "suggested kills mentions ollama"
+
 # CLEANUP
 # =============================================================================
 rm -rf "$TEST_TMPDIR"
