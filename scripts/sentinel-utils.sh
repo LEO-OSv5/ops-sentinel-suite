@@ -173,17 +173,43 @@ SENTINEL_VERSION="0.2.0"
               echo "─── Recent Log ────────────────────────────────"
               tail -15 "$SENTINEL_LOGS/sentinel.log" 2>/dev/null || echo "  (no log yet)"
           } > "$alert_file"
+          # Write JSON alert for dashboard API
+          local json_alert="$alert_dir/alert-${ts}.json"
+          local severity="info"
+          if [[ "$title" == *"CRITICAL"* || "$title" == *"critical"* ]]; then severity="critical"
+          elif [[ "$title" == *"Warning"* || "$title" == *"warning"* || "$title" == *"WARNING"* ]]; then severity="warning"
+          fi
+          # JSON escape helper (local, no dependency on write-status.sh)
+          local esc_title="${title//\\/\\\\}"; esc_title="${esc_title//\"/\\\"}"
+          local esc_msg="${message//\\/\\\\}"; esc_msg="${esc_msg//\"/\\\"}"
+          local esc_detail="${detail//\\/\\\\}"; esc_detail="${esc_detail//\"/\\\"}"
+          esc_detail="${esc_detail//$'\n'/\\n}"
+          printf '{"timestamp":"%s","type":"%s","severity":"%s","message":"%s","detail":"%s"}\n' \
+              "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+              "$esc_title" "$severity" "$esc_msg" "$esc_detail" > "$json_alert"
 
           # Clean up alerts older than 24 hours
           find "$alert_dir" -name "alert-*.txt" -mmin +1440 -delete 2>/dev/null || true
+          find "$alert_dir" -name "alert-*.json" -mmin +1440 -delete 2>/dev/null || true
 
-          terminal-notifier \
-              -title "$title" \
-              -message "$message" \
-              -sound "$sound" \
-              -group "sentinel" \
-              -execute "open '$alert_file'" \
-              2>/dev/null &
+          # Click action: dashboard URL if server running, else open .txt file
+          if curl -s -o /dev/null --connect-timeout 1 "http://localhost:${WEB_PORT:-8888}/api/status" 2>/dev/null; then
+              terminal-notifier \
+                  -title "$title" \
+                  -message "$message" \
+                  -sound "$sound" \
+                  -group "sentinel" \
+                  -open "http://localhost:${WEB_PORT:-8888}/#alert-${ts}" \
+                  2>/dev/null &
+          else
+              terminal-notifier \
+                  -title "$title" \
+                  -message "$message" \
+                  -sound "$sound" \
+                  -group "sentinel" \
+                  -execute "open '$alert_file'" \
+                  2>/dev/null &
+          fi
       else
           osascript -e "display notification \"$message\" with title \"$title\" sound name \"$sound\"" 2>/dev/null
       fi
