@@ -243,6 +243,7 @@ Free: ${free_mem}MB (threshold: ${MEMORY_FREE_CRITICAL_MB}MB)
 ACTION TAKEN:
   Tier 1 kill (expendable apps) freed ~${freed_t1}MB
   Pressure resolved — no further action needed"
+            type record_action &>/dev/null && record_action "kill" "tier1" "tier=1,freed_mb=$freed_t1"
             PHASE1_CRITICAL="true"
             return 2
         fi
@@ -264,6 +265,7 @@ ACTIONS TAKEN:
   Tier 2 (heavy optional)  freed ~${freed_t2}MB
   Total freed: ~$(( freed_t1 + freed_t2 ))MB
   Pressure resolved — no further action needed"
+            type record_action &>/dev/null && record_action "kill" "tier1+2" "tier=2,freed_mb=$(( freed_t1 + freed_t2 ))"
             PHASE1_CRITICAL="true"
             return 2
         fi
@@ -288,6 +290,7 @@ ALL KILL TIERS EXHAUSTED:
 MACHINE MAY STILL BE UNDER PRESSURE.
 Consider running: sentinel-triage"
 
+        type record_action &>/dev/null && record_action "kill" "all_tiers" "tier=3,freed_mb=$total_freed"
         PHASE1_CRITICAL="true"
         return 2
     fi

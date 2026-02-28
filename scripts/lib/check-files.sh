@@ -233,6 +233,7 @@ check_files() {
 
     if (( sorted_count > 0 )); then
         log_info "File janitor: sorted $sorted_count file(s)"
+        type record_action &>/dev/null && record_action "janitor" "sort" "files_moved=$sorted_count"
     fi
 
     return 0

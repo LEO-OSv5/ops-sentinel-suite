@@ -138,6 +138,7 @@ CRASH LOOP DETECTED — auto-restart disabled for this service.
 Manual intervention required:
   launchctl kickstart gui/$(id -u)/$service
   Or check: launchctl print gui/$(id -u)/$service"
+                    type record_action &>/dev/null && record_action "crash_loop" "$service" "restart_count=$restart_count"
                     has_crash_loop=true
                     continue
                 fi
@@ -145,6 +146,7 @@ Manual intervention required:
                 # Auto-restart if enabled
                 if [[ "$AUTO_RESTART" == "true" ]]; then
                     _restart_service "$service"
+                    type record_action &>/dev/null && record_action "restart" "$service" "exit_code=$exit_code"
                     sentinel_notify "Sentinel" "Restarted $service (was exit $exit_code)" "Glass" \
                         "Service: $service
 Previous exit code: $exit_code
