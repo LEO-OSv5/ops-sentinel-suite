@@ -129,7 +129,16 @@ check_services() {
 
                 if (( restart_count >= MAX_RESTARTS_PER_HOUR )); then
                     log_error "CRASH LOOP: $service — $restart_count restarts in 1 hour"
-                    sentinel_notify "Sentinel" "$service is crash-looping ($restart_count restarts/hr) — needs manual intervention" "Basso"
+                    sentinel_notify "Sentinel" "$service is crash-looping ($restart_count restarts/hr) — needs manual intervention" "Basso" \
+                        "Service: $service
+Exit code: $exit_code
+Restarts this hour: $restart_count (max: $MAX_RESTARTS_PER_HOUR)
+
+CRASH LOOP DETECTED — auto-restart disabled for this service.
+Manual intervention required:
+  launchctl kickstart gui/$(id -u)/$service
+  Or check: launchctl print gui/$(id -u)/$service"
+                    type record_action &>/dev/null && record_action "crash_loop" "$service" "restart_count=$restart_count"
                     has_crash_loop=true
                     continue
                 fi
@@ -137,11 +146,23 @@ check_services() {
                 # Auto-restart if enabled
                 if [[ "$AUTO_RESTART" == "true" ]]; then
                     _restart_service "$service"
-                    sentinel_notify "Sentinel" "Restarted $service (was exit $exit_code)" "Glass"
+                    type record_action &>/dev/null && record_action "restart" "$service" "exit_code=$exit_code"
+                    sentinel_notify "Sentinel" "Restarted $service (was exit $exit_code)" "Glass" \
+                        "Service: $service
+Previous exit code: $exit_code
+
+ACTION TAKEN: Auto-restarted via launchctl kickstart.
+The daemon will continue monitoring this service."
                     has_restarts=true
                 else
                     log_warn "$service crashed (exit $exit_code) — auto-restart disabled"
-                    sentinel_notify "Sentinel" "$service crashed (exit $exit_code)" "Submarine"
+                    sentinel_notify "Sentinel" "$service crashed (exit $exit_code)" "Submarine" \
+                        "Service: $service
+Exit code: $exit_code
+
+Auto-restart is DISABLED (AUTO_RESTART=false in config).
+To restart manually:
+  launchctl kickstart gui/$(id -u)/$service"
                 fi
                 ;;
         esac

@@ -236,7 +236,14 @@ check_pressure() {
         if _check_pressure_resolved; then
             log_info "PRESSURE: Resolved after Tier 1 kill"
             set_cooldown "pressure-kill"
-            sentinel_notify "Sentinel: Pressure" "Tier 1 kill freed ~${freed_t1}MB — resolved"
+            sentinel_notify "Sentinel: Pressure" "Tier 1 kill freed ~${freed_t1}MB — resolved" "Glass" \
+                "Swap: ${swap_used}MB (threshold: ${SWAP_CRITICAL_MB}MB)
+Free: ${free_mem}MB (threshold: ${MEMORY_FREE_CRITICAL_MB}MB)
+
+ACTION TAKEN:
+  Tier 1 kill (expendable apps) freed ~${freed_t1}MB
+  Pressure resolved — no further action needed"
+            type record_action &>/dev/null && record_action "kill" "tier1" "tier=1,freed_mb=$freed_t1"
             PHASE1_CRITICAL="true"
             return 2
         fi
@@ -249,7 +256,16 @@ check_pressure() {
         if _check_pressure_resolved; then
             log_info "PRESSURE: Resolved after Tier 2 kill"
             set_cooldown "pressure-kill"
-            sentinel_notify "Sentinel: Pressure" "Tier 1+2 kill freed ~$(( freed_t1 + freed_t2 ))MB — resolved"
+            sentinel_notify "Sentinel: Pressure" "Tier 1+2 kill freed ~$(( freed_t1 + freed_t2 ))MB — resolved" "Glass" \
+                "Swap: ${swap_used}MB (threshold: ${SWAP_CRITICAL_MB}MB)
+Free: ${free_mem}MB (threshold: ${MEMORY_FREE_CRITICAL_MB}MB)
+
+ACTIONS TAKEN:
+  Tier 1 (expendable apps) freed ~${freed_t1}MB
+  Tier 2 (heavy optional)  freed ~${freed_t2}MB
+  Total freed: ~$(( freed_t1 + freed_t2 ))MB
+  Pressure resolved — no further action needed"
+            type record_action &>/dev/null && record_action "kill" "tier1+2" "tier=2,freed_mb=$(( freed_t1 + freed_t2 ))"
             PHASE1_CRITICAL="true"
             return 2
         fi
@@ -261,8 +277,20 @@ check_pressure() {
 
         local total_freed=$(( freed_t1 + freed_t2 + freed_t3 ))
         set_cooldown "pressure-kill"
-        sentinel_notify "Sentinel: CRITICAL" "All tiers exhausted — freed ~${total_freed}MB total"
+        sentinel_notify "Sentinel: CRITICAL" "All tiers exhausted — freed ~${total_freed}MB total" "Basso" \
+            "Swap: ${swap_used}MB (threshold: ${SWAP_CRITICAL_MB}MB)
+Free: ${free_mem}MB (threshold: ${MEMORY_FREE_CRITICAL_MB}MB)
 
+ALL KILL TIERS EXHAUSTED:
+  Tier 1 (expendable apps) freed ~${freed_t1}MB
+  Tier 2 (heavy optional)  freed ~${freed_t2}MB
+  Tier 3 (expendable bots) freed ~${freed_t3}MB
+  Total freed: ~${total_freed}MB
+
+MACHINE MAY STILL BE UNDER PRESSURE.
+Consider running: sentinel-triage"
+
+        type record_action &>/dev/null && record_action "kill" "all_tiers" "tier=3,freed_mb=$total_freed"
         PHASE1_CRITICAL="true"
         return 2
     fi
@@ -271,7 +299,12 @@ check_pressure() {
     log_warn "PRESSURE: WARNING — swap=${swap_used}MB (threshold=${SWAP_WARNING_MB}MB)"
 
     if check_cooldown "pressure-warn" "${PRESSURE_KILL_COOLDOWN:-300}"; then
-        sentinel_notify "Sentinel: Pressure Warning" "Swap at ${swap_used}MB (warn=${SWAP_WARNING_MB}MB)"
+        sentinel_notify "Sentinel: Pressure Warning" "Swap at ${swap_used}MB (warn=${SWAP_WARNING_MB}MB)" "Submarine" \
+            "Swap: ${swap_used}MB (warning threshold: ${SWAP_WARNING_MB}MB)
+Free: ${free_mem}MB
+
+Not critical yet — monitoring. No kills triggered.
+The daemon will escalate if pressure worsens."
         set_cooldown "pressure-warn"
     fi
 

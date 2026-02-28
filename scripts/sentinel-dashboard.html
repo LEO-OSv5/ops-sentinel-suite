@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OPS Sentinel</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root {
+  --bg: #0f1117; --surface: #161922; --border: #1e2230; --border-hover: #2a2f42;
+  --text: #e2e4ea; --text-dim: #8b8fa3; --text-muted: #555a6e;
+  --green: #34d399; --amber: #fbbf24; --red: #f87171; --blue: #60a5fa;
+  --green-bg: rgba(52,211,153,.12); --amber-bg: rgba(251,191,36,.12);
+  --red-bg: rgba(248,113,113,.12); --blue-bg: rgba(96,165,250,.12);
+  --ring-bg: #1a1d27; --radius: 8px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; overflow-x: hidden; }
+a { color: var(--blue); text-decoration: none; }
+
+/* Layout */
+.shell { display: flex; flex-direction: column; min-height: 100vh; }
+.header { display: flex; align-items: center; gap: 16px; padding: 10px 20px;
+  background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; flex-wrap: wrap; }
+.header .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; letter-spacing: .5px; white-space: nowrap; }
+.header .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+.header .meta { color: var(--text-dim); font-size: 12px; white-space: nowrap; }
+.header .spacer { flex: 1; }
+.time-btns { display: flex; gap: 4px; }
+.time-btns button { background: var(--border); border: none; color: var(--text-dim); padding: 4px 10px;
+  border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; }
+.time-btns button.active, .time-btns button:hover { background: var(--blue); color: #fff; }
+.gear-btn { background: none; border: 1px solid var(--border); color: var(--text-dim);
+  width: 32px; height: 32px; border-radius: var(--radius); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+.gear-btn:hover { border-color: var(--blue); color: var(--blue); }
+
+.main { flex: 1; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+/* Cards */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.card-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--text-dim); margin-bottom: 12px; }
+
+/* Gauge cards */
+.gauge-card { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.gauge-card .label { font-size: 11px; color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.gauge-card .value { font-size: 22px; font-weight: 700; }
+.gauge-card .sub { font-size: 11px; color: var(--text-dim); }
+.gauge-card .callout { font-size: 11px; padding: 3px 8px; border-radius: 4px; margin-top: 2px; font-weight: 600; }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.badge-green { background: var(--green-bg); color: var(--green); }
+.badge-red { background: var(--red-bg); color: var(--red); }
+.badge-amber { background: var(--amber-bg); color: var(--amber); }
+.badge-blue { background: var(--blue-bg); color: var(--blue); }
+.badge-gray { background: rgba(85,90,110,.2); color: var(--text-muted); }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--text-muted); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+td { padding: 7px 8px; border-bottom: 1px solid var(--border); font-size: 12px; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr.alt { background: rgba(255,255,255,.015); }
+
+/* Buttons */
+.btn { background: var(--border); border: 1px solid var(--border-hover); color: var(--text-dim);
+  padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.btn:hover { background: var(--border-hover); color: var(--text); }
+.btn-danger { border-color: var(--red); color: var(--red); }
+.btn-danger:hover { background: var(--red-bg); }
+.btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* Chart */
+.chart-wrap { position: relative; height: 260px; }
+.chart-wrap canvas { width: 100% !important; }
+
+/* Timeline */
+.timeline-section { max-height: 280px; overflow-y: auto; }
+.tl-row { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.tl-row:last-child { border-bottom: none; }
+.tl-ts { color: var(--text-muted); font-size: 11px; white-space: nowrap; min-width: 130px; font-variant-numeric: tabular-nums; }
+.tl-msg { flex: 1; word-break: break-word; }
+
+/* Control bar */
+.control-bar { position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--border);
+  padding: 10px 20px; display: flex; gap: 10px; align-items: center; z-index: 40; flex-wrap: wrap; }
+.control-bar .spacer { flex: 1; }
+.ctrl-btn { padding: 7px 16px; border-radius: var(--radius); font-size: 12px; font-weight: 600;
+  cursor: pointer; border: 1px solid var(--border-hover); background: var(--surface); color: var(--text); }
+.ctrl-btn:hover { border-color: var(--blue); }
+.ctrl-btn.triage { border-color: var(--red); color: var(--red); }
+.ctrl-btn.triage:hover { background: var(--red-bg); }
+
+/* Config drawer */
+.drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 90; display: none; }
+.drawer-overlay.open { display: block; }
+.drawer { position: fixed; top: 0; right: -420px; width: 400px; height: 100vh; background: var(--surface);
+  border-left: 1px solid var(--border); z-index: 100; transition: right .25s ease; display: flex; flex-direction: column; }
+.drawer.open { right: 0; }
+.drawer-head { padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.drawer-head h3 { font-size: 14px; font-weight: 700; }
+.drawer-close { background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; }
+.drawer-body { flex: 1; overflow-y: auto; padding: 16px; }
+.cfg-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.cfg-row label { font-size: 11px; font-weight: 600; color: var(--text-dim); min-width: 180px; word-break: break-all; }
+.cfg-row input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 5px 8px; border-radius: 4px; font-size: 12px; font-family: 'SF Mono', monospace; }
+.cfg-row .btn { flex-shrink: 0; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+/* Responsive */
+@media (max-width: 900px) {
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+  .grid-2 { grid-template-columns: 1fr; }
+  .header { gap: 8px; }
+}
+@media (max-width: 520px) {
+  .grid-4 { grid-template-columns: 1fr 1fr; }
+  .main { padding: 10px; }
+  .drawer { width: 100vw; right: -100vw; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- Header -->
+  <div class="header">
+    <div class="brand"><span class="dot" id="liveDot"></span> OPS SENTINEL</div>
+    <div class="meta" id="headerMeta">--</div>
+    <div class="spacer"></div>
+    <div class="time-btns" id="timeBtns">
+      <button data-h="1" class="active">1h</button>
+      <button data-h="6">6h</button>
+      <button data-h="24">24h</button>
+      <button data-h="168">7d</button>
+      <button data-h="">All</button>
+    </div>
+    <button class="gear-btn" id="gearBtn" title="Config">&#9881;</button>
+  </div>
+
+  <div class="main">
+    <!-- Gauges -->
+    <div class="grid-4" id="gauges">
+      <div class="card gauge-card" id="gMem"><div class="label">Memory</div><svg id="ringMem" width="90" height="90"></svg><div class="value" id="vMem">--</div><div class="sub" id="sMem">--</div><div class="callout" id="cMem"></div></div>
+      <div class="card gauge-card" id="gSwap"><div class="label">Swap</div><svg id="ringSwap" width="90" height="90"></svg><div class="value" id="vSwap">--</div><div class="sub" id="sSwap">--</div><div class="callout" id="cSwap"></div></div>
+      <div class="card gauge-card" id="gDisk"><div class="label">Disk</div><svg id="ringDisk" width="90" height="90"></svg><div class="value" id="vDisk">--</div><div class="sub" id="sDisk">--</div><div class="callout" id="cDisk"></div></div>
+      <div class="card gauge-card" id="gLoad"><div class="label">CPU / Load</div><svg id="ringLoad" width="90" height="90"></svg><div class="value" id="vLoad">--</div><div class="sub" id="sLoad">--</div><div class="callout" id="cLoad"></div></div>
+    </div>
+
+    <!-- Services + Backups -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Services</div>
+        <table><thead><tr><th>Name</th><th>PID</th><th>Status</th><th></th></tr></thead>
+        <tbody id="svcBody"><tr><td colspan="4" style="color:var(--text-muted)">Loading...</td></tr></tbody></table>
+      </div>
+      <div class="card">
+        <div class="card-title">Backup Channels</div>
+        <div id="backupsPanel" style="color:var(--text-muted)">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Top Processes + Predictions -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Top Processes (by RAM)</div>
+        <table><thead><tr><th>Name</th><th>RSS</th><th></th></tr></thead>
+        <tbody id="procBody"><tr><td colspan="3" style="color:var(--text-muted)">Loading...</td></tr></tbody></table>
+      </div>
+      <div class="card">
+        <div class="card-title">Predictions &amp; Forecasts</div>
+        <div id="predPanel" style="color:var(--text-muted)">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Trend Chart -->
+    <div class="card">
+      <div class="card-title">System Trends</div>
+      <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+    </div>
+
+    <!-- Alerts + Actions -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Alerts</div>
+        <div class="timeline-section" id="alertTimeline"><div style="color:var(--text-muted)">Loading...</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Actions</div>
+        <div class="timeline-section" id="actionTimeline"><div style="color:var(--text-muted)">Loading...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Control Bar -->
+  <div class="control-bar">
+    <button class="ctrl-btn triage" onclick="doTriage()">&#128308; Triage Mode</button>
+    <button class="ctrl-btn" onclick="restartAllCrashed()">&#8635; Restart All Crashed</button>
+    <div class="spacer"></div>
+    <button class="ctrl-btn" onclick="openDrawer()">&#9881; Edit Config</button>
+  </div>
+</div>
+
+<!-- Config Drawer -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="configDrawer">
+  <div class="drawer-head"><h3>Configuration</h3><button class="drawer-close" onclick="closeDrawer()">&times;</button></div>
+  <div class="drawer-body" id="drawerBody"><div style="color:var(--text-muted)">Loading...</div></div>
+</div>
+
+<script>
+/* ── Global State ─────────────────────────────────────────── */
+const AUTH_TOKEN = '{{AUTH_TOKEN}}';
+const WEB_PORT = '{{WEB_PORT}}';
+let chart = null;
+let currentHours = 1;
+let alertTimestamps = [];
+let lastStatus = null;
+let crashedServices = [];
+
+/* ── Helpers ──────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+const esc = s => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+
+function colorFor(pct) { return pct >= 80 ? 'var(--red)' : pct >= 60 ? 'var(--amber)' : 'var(--green)'; }
+function badgeClass(pct) { return pct >= 80 ? 'badge-red' : pct >= 60 ? 'badge-amber' : 'badge-green'; }
+
+function fmtTs(ts) {
+  if (!ts) return '--';
+  const d = new Date(ts);
+  return d.toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+}
+function shortTs(ts) {
+  const d = new Date(ts);
+  return d.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', hour12:false });
+}
+
+function authHeaders() {
+  return { 'Content-Type': 'application/json', 'X-Sentinel-Token': AUTH_TOKEN };
+}
+
+/* ── SVG Gauge Ring ───────────────────────────────────────── */
+function drawRing(svgId, pct) {
+  const svg = $(svgId); if (!svg) return;
+  const r = 36, cx = 45, cy = 45, sw = 7;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (Math.min(pct, 100) / 100) * circ;
+  const col = colorFor(pct);
+  svg.setAttribute('viewBox', '0 0 90 90');
+  svg.innerHTML = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--ring-bg)" stroke-width="${sw}"/>` +
+    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${col}" stroke-width="${sw}" ` +
+    `stroke-dasharray="${circ}" stroke-dashoffset="${offset}" stroke-linecap="round" ` +
+    `transform="rotate(-90 ${cx} ${cy})" style="transition:stroke-dashoffset .6s ease"/>` +
+    `<text x="${cx}" y="${cy + 1}" text-anchor="middle" dominant-baseline="middle" ` +
+    `fill="${col}" font-size="16" font-weight="700">${pct}%</text>`;
+}
+
+/* ── Update Functions ─────────────────────────────────────── */
+function updateHeader(s) {
+  $('headerMeta').textContent = `${s.machine || '--'} · Cycle #${s.cycle ?? '--'} · ${fmtTs(s.timestamp)}`;
+  $('liveDot').style.background = s.pressure_gate ? 'var(--red)' : 'var(--green)';
+}
+
+function updateGauges(s) {
+  const m = s.memory || {}, sw = s.swap || {}, d = s.disk || {}, l = s.load || {};
+  drawRing('ringMem', m.percent ?? 0);
+  $('vMem').textContent = `${m.percent ?? 0}%`;
+  $('sMem').textContent = `${m.used_mb ?? 0} / ${m.total_mb ?? 0} MB`;
+  const cMem = $('cMem');
+  cMem.textContent = `Free: ${m.free_mb ?? 0} MB`;
+  cMem.style.background = (m.free_mb ?? 9999) < 300 ? 'var(--red-bg)' : 'var(--green-bg)';
+  cMem.style.color = (m.free_mb ?? 9999) < 300 ? 'var(--red)' : 'var(--green)';
+
+  drawRing('ringSwap', sw.percent ?? 0);
+  $('vSwap').textContent = `${sw.percent ?? 0}%`;
+  $('sSwap').textContent = `${sw.used_mb ?? 0} / ${sw.total_mb ?? 0} MB`;
+  const cSwap = $('cSwap');
+  if (s.pressure_gate) { cSwap.textContent = 'PRESSURE GATE ACTIVE'; cSwap.style.background = 'var(--red-bg)'; cSwap.style.color = 'var(--red)'; }
+  else { cSwap.textContent = 'Normal'; cSwap.style.background = 'var(--green-bg)'; cSwap.style.color = 'var(--green)'; }
+
+  drawRing('ringDisk', d.percent ?? 0);
+  $('vDisk').textContent = `${d.percent ?? 0}%`;
+  $('sDisk').textContent = `${d.used_gb ?? 0} / ${d.total_gb ?? 0} GB`;
+  const cDisk = $('cDisk');
+  cDisk.textContent = `Free: ${d.free_gb ?? 0} GB`;
+  cDisk.style.background = (d.free_gb ?? 999) < 10 ? 'var(--amber-bg)' : 'var(--green-bg)';
+  cDisk.style.color = (d.free_gb ?? 999) < 10 ? 'var(--amber)' : 'var(--green)';
+
+  drawRing('ringLoad', l.percent ?? 0);
+  $('vLoad').textContent = `${l.percent ?? 0}%`;
+  $('sLoad').textContent = `Load ${l.avg_1m ?? 0} / ${l.cores ?? 0} cores`;
+  $('cLoad').textContent = ''; $('cLoad').style.background = 'none';
+}
+
+function updateServices(services) {
+  if (!services || !services.length) { $('svcBody').innerHTML = '<tr><td colspan="4" style="color:var(--text-muted)">No services monitored</td></tr>'; return; }
+  crashedServices = [];
+  $('svcBody').innerHTML = services.map((s, i) => {
+    const name = s.name || s.label || '--';
+    const label = s.label || s.name || '';
+    const display = label.replace(/^com\.aether\./, '').replace(/^com\.ops\./, '');
+    const badge = s.status === 'running' ? '<span class="badge badge-green">running</span>'
+      : s.status === 'crashed' ? '<span class="badge badge-red">crashed</span>'
+      : '<span class="badge badge-gray">not found</span>';
+    const pid = s.pid > 0 ? s.pid : '--';
+    const canRestart = s.status === 'crashed' || s.status === 'running';
+    if (s.status === 'crashed') crashedServices.push(label);
+    return `<tr class="${i % 2 ? 'alt' : ''}"><td>${esc(display)}</td><td style="font-variant-numeric:tabular-nums">${pid}</td><td>${badge}</td>` +
+      `<td><button class="btn" ${canRestart ? `onclick="restartService('${esc(label)}')"` : 'disabled'}>&#8635;</button></td></tr>`;
+  }).join('');
+}
+
+function updateBackups(b) {
+  if (!b) { $('backupsPanel').innerHTML = '<span style="color:var(--text-muted)">No backup data</span>'; return; }
+  const mini = b.ops_mini || {};
+  const miniStatus = mini.mounted
+    ? (mini.stale ? '<span class="badge badge-amber">mounted &middot; stale</span>' : '<span class="badge badge-green">mounted &middot; fresh</span>')
+    : '<span class="badge badge-red">disconnected</span>';
+  const ghStale = (b.github_stale || []);
+  const ghBadge = ghStale.length === 0
+    ? '<span class="badge badge-green">all fresh</span>'
+    : `<span class="badge badge-amber">${ghStale.length} stale</span>`;
+  const ghList = ghStale.length ? `<div style="margin-top:4px;color:var(--text-dim);font-size:11px">${ghStale.map(r => esc(r)).join(', ')}</div>` : '';
+  const syncBadge = b.ops_sync === 'running'
+    ? '<span class="badge badge-green">registered</span>'
+    : '<span class="badge badge-gray">not registered</span>';
+
+  $('backupsPanel').innerHTML = `
+    <table><tbody>
+      <tr><td style="font-weight:600">OPS-mini</td><td>${miniStatus}</td></tr>
+      <tr><td style="font-weight:600">GitHub</td><td>${ghBadge}${ghList}</td></tr>
+      <tr><td style="font-weight:600">OPS Sync</td><td>${syncBadge}</td></tr>
+    </tbody></table>`;
+}
+
+function updateProcesses(procs) {
+  if (!procs || !procs.length) { $('procBody').innerHTML = '<tr><td colspan="3" style="color:var(--text-muted)">No data</td></tr>'; return; }
+  $('procBody').innerHTML = procs.map((p, i) => {
+    const killDisabled = !p.killable;
+    return `<tr class="${i % 2 ? 'alt' : ''}"><td>${esc(p.name)}</td><td style="font-variant-numeric:tabular-nums">${p.rss_mb} MB</td>` +
+      `<td><button class="btn btn-danger" ${killDisabled ? 'disabled title="Protected"' : `onclick="killProc(${p.pid},'${esc(p.name)}')"`}>${killDisabled ? '&#128274;' : 'Kill'}</button></td></tr>`;
+  }).join('');
+}
+
+function updatePredictions(pred) {
+  if (!pred) { $('predPanel').innerHTML = '<span style="color:var(--text-muted)">No predictions available</span>'; return; }
+  let html = '<div style="display:flex;flex-direction:column;gap:10px">';
+
+  /* Swap forecast */
+  if (pred.swap_full_in_minutes != null) {
+    const mins = pred.swap_full_in_minutes;
+    const cls = mins < 30 ? 'badge-red' : mins < 120 ? 'badge-amber' : 'badge-blue';
+    html += `<div><span class="badge ${cls}">Swap</span> Full in ~${mins} min</div>`;
+  } else {
+    html += '<div><span class="badge badge-green">Swap</span> No pressure detected</div>';
+  }
+
+  /* Disk forecast */
+  if (pred.disk_full_in_days != null) {
+    const days = pred.disk_full_in_days;
+    const cls = days < 3 ? 'badge-red' : days < 14 ? 'badge-amber' : 'badge-blue';
+    html += `<div><span class="badge ${cls}">Disk</span> Full in ~${days} days</div>`;
+  } else {
+    html += '<div><span class="badge badge-green">Disk</span> Stable</div>';
+  }
+
+  /* Warnings */
+  const warnings = pred.warnings || [];
+  if (warnings.length) {
+    html += '<div style="margin-top:4px"><strong style="font-size:11px;color:var(--amber)">Warnings</strong>';
+    warnings.forEach(w => { html += `<div style="font-size:12px;padding:2px 0;color:var(--text-dim)">&bull; ${esc(w)}</div>`; });
+    html += '</div>';
+  }
+
+  /* Suggested kills */
+  const kills = pred.suggested_kills || [];
+  if (kills.length) {
+    html += '<div style="margin-top:4px"><strong style="font-size:11px;color:var(--red)">Suggested Kills</strong>';
+    kills.forEach(k => {
+      const name = typeof k === 'string' ? k : (k.name || '--');
+      const eff = typeof k === 'object' && k.effectiveness ? ` (${k.effectiveness}% effective)` : '';
+      html += `<div style="font-size:12px;padding:2px 0;color:var(--text-dim)">&bull; ${esc(name)}${eff}</div>`;
+    });
+    html += '</div>';
+  }
+
+  if (!warnings.length && !kills.length && pred.swap_full_in_minutes == null && pred.disk_full_in_days == null) {
+    html += '<div style="color:var(--green);font-weight:600;margin-top:8px">All systems nominal</div>';
+  }
+
+  html += '</div>';
+  $('predPanel').innerHTML = html;
+}
+
+/* ── Chart ────────────────────────────────────────────────── */
+function initChart() {
+  const ctx = $('trendChart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'Memory %', data: [], borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,.08)', tension: .3, pointRadius: 0, borderWidth: 1.5, fill: true },
+        { label: 'Swap %', data: [], borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,.06)', tension: .3, pointRadius: 0, borderWidth: 1.5, fill: true },
+        { label: 'Disk %', data: [], borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,.06)', tension: .3, pointRadius: 0, borderWidth: 1.5, fill: true },
+        { label: 'Load %', data: [], borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,.06)', tension: .3, pointRadius: 0, borderWidth: 1.5, fill: true },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { ticks: { color: '#555a6e', font: { size: 10 }, maxTicksLimit: 12, maxRotation: 0 }, grid: { color: 'rgba(30,34,48,.6)' } },
+        y: { min: 0, max: 100, ticks: { color: '#555a6e', font: { size: 10 }, stepSize: 20, callback: v => v + '%' }, grid: { color: 'rgba(30,34,48,.6)' } },
+      },
+      plugins: {
+        legend: { labels: { color: '#8b8fa3', font: { size: 11 }, boxWidth: 12, padding: 12 } },
+        tooltip: { backgroundColor: '#161922', titleColor: '#e2e4ea', bodyColor: '#8b8fa3', borderColor: '#1e2230', borderWidth: 1, padding: 10, callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}%` } },
+      },
+    },
+    plugins: [{
+      id: 'alertLines',
+      afterDraw(chart) {
+        if (!alertTimestamps.length) return;
+        const xScale = chart.scales.x, yScale = chart.scales.y, ctx = chart.ctx;
+        const labels = chart.data.labels;
+        alertTimestamps.forEach(ts => {
+          const idx = labels.findIndex(l => l === ts);
+          if (idx < 0) return;
+          const x = xScale.getPixelForValue(idx);
+          ctx.save(); ctx.beginPath(); ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = 'rgba(248,113,113,.5)'; ctx.lineWidth = 1;
+          ctx.moveTo(x, yScale.top); ctx.lineTo(x, yScale.bottom);
+          ctx.stroke(); ctx.restore();
+        });
+      }
+    }]
+  });
+}
+
+function updateChart(records) {
+  if (!chart || !records.length) return;
+  const labels = records.map(r => shortTs(r.t));
+  chart.data.labels = labels;
+  chart.data.datasets[0].data = records.map(r => r.mem ?? 0);
+  chart.data.datasets[1].data = records.map(r => r.swap ?? 0);
+  chart.data.datasets[2].data = records.map(r => r.disk ?? 0);
+  chart.data.datasets[3].data = records.map(r => r.load ?? 0);
+  chart.update('none');
+}
+
+function scrollChartTo(ts) {
+  if (!chart) return;
+  const labels = chart.data.labels;
+  const target = shortTs(ts);
+  const idx = labels.indexOf(target);
+  if (idx >= 0) {
+    chart.tooltip.setActiveElements([{datasetIndex: 0, index: idx}], {x: 0, y: 0});
+    chart.update();
+  }
+  $('trendChart').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/* ── Timeline Renderers ───────────────────────────────────── */
+function renderAlertTimeline(alerts) {
+  alertTimestamps = [];
+  if (!alerts || !alerts.length) { $('alertTimeline').innerHTML = '<div style="color:var(--text-muted)">No alerts</div>'; return; }
+  const sorted = [...alerts].sort((a, b) => {
+    const ta = a.timestamp || a.time || ''; const tb = b.timestamp || b.time || '';
+    return tb.localeCompare(ta);
+  });
+  $('alertTimeline').innerHTML = sorted.map(a => {
+    const ts = a.timestamp || a.time || '';
+    alertTimestamps.push(shortTs(ts));
+    const sev = (a.severity || a.type || 'info').toLowerCase();
+    const cls = sev.includes('critical') || sev.includes('error') ? 'badge-red' : sev.includes('warn') ? 'badge-amber' : 'badge-blue';
+    const msg = a.message || a.content || a.type || a.file || '--';
+    return `<div class="tl-row"><span class="tl-ts">${esc(fmtTs(ts))}</span><span class="badge ${cls}">${esc(sev)}</span>` +
+      `<span class="tl-msg">${esc(msg.substring(0, 200))}</span>` +
+      `<button class="btn" onclick="scrollChartTo('${esc(ts)}')" title="View on chart">View</button></div>`;
+  }).join('');
+}
+
+function renderActionLog(actions) {
+  if (!actions || !actions.length) { $('actionTimeline').innerHTML = '<div style="color:var(--text-muted)">No actions recorded</div>'; return; }
+  const sorted = [...actions].sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+  $('actionTimeline').innerHTML = sorted.map(a => {
+    const typeCls = (a.type || '').includes('kill') ? 'badge-red' : (a.type || '').includes('restart') ? 'badge-amber' : 'badge-blue';
+    const details = a.details ? Object.entries(a.details).map(([k, v]) => `${k}=${v}`).join(', ') : '';
+    return `<div class="tl-row"><span class="tl-ts">${esc(fmtTs(a.timestamp))}</span><span class="badge ${typeCls}">${esc(a.type || '--')}</span>` +
+      `<span class="tl-msg"><strong>${esc(a.target || '--')}</strong>${details ? ' &middot; ' + esc(details) : ''}</span></div>`;
+  }).join('');
+}
+
+/* ── API Calls ────────────────────────────────────────────── */
+async function refresh() {
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) return;
+    const s = await res.json();
+    if (s.error) return;
+    lastStatus = s;
+    updateHeader(s);
+    updateGauges(s);
+    updateServices(s.services);
+    updateBackups(s.backups);
+    updateProcesses(s.top_processes);
+    updatePredictions(s.predictions);
+  } catch (e) { console.warn('refresh failed:', e); }
+}
+
+async function loadHistory(hours) {
+  try {
+    const url = hours ? `/api/history?hours=${hours}` : '/api/history';
+    const res = await fetch(url);
+    const data = await res.json();
+    if (Array.isArray(data)) updateChart(data);
+  } catch (e) { console.warn('history failed:', e); }
+}
+
+async function loadAlerts() {
+  try {
+    const res = await fetch('/api/alerts');
+    const data = await res.json();
+    if (Array.isArray(data)) renderAlertTimeline(data);
+  } catch (e) { console.warn('alerts failed:', e); }
+}
+
+async function loadActions() {
+  try {
+    const res = await fetch('/api/actions');
+    const data = await res.json();
+    if (Array.isArray(data)) renderActionLog(data);
+  } catch (e) { console.warn('actions failed:', e); }
+}
+
+async function restartService(label) {
+  if (!confirm(`Restart ${label}?`)) return;
+  try {
+    await fetch('/api/action/restart', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ service: label }) });
+    setTimeout(refresh, 1000);
+  } catch (e) { alert('Restart failed: ' + e.message); }
+}
+
+async function killProc(pid, name) {
+  if (!confirm(`Kill process ${name} (PID ${pid})?`)) return;
+  try {
+    await fetch('/api/action/kill', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ pid: pid }) });
+    setTimeout(refresh, 1000);
+  } catch (e) { alert('Kill failed: ' + e.message); }
+}
+
+async function doTriage() {
+  if (!confirm('Run emergency triage? This will auto-kill processes to free memory.')) return;
+  try {
+    const res = await fetch('/api/action/triage', { method: 'POST', headers: authHeaders(), body: '{}' });
+    const data = await res.json();
+    alert(data.ok ? 'Triage started in background' : ('Triage failed: ' + (data.error || 'unknown')));
+    setTimeout(refresh, 3000);
+  } catch (e) { alert('Triage failed: ' + e.message); }
+}
+
+async function restartAllCrashed() {
+  if (!crashedServices.length) { alert('No crashed services detected.'); return; }
+  if (!confirm(`Restart ${crashedServices.length} crashed service(s)?`)) return;
+  for (const svc of crashedServices) {
+    try { await fetch('/api/action/restart', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ service: svc }) }); }
+    catch (e) { console.warn('restart failed for', svc, e); }
+  }
+  setTimeout(refresh, 1500);
+}
+
+/* ── Config Drawer ────────────────────────────────────────── */
+function openDrawer() {
+  $('drawerOverlay').classList.add('open');
+  $('configDrawer').classList.add('open');
+  loadConfig();
+}
+function closeDrawer() {
+  $('drawerOverlay').classList.remove('open');
+  $('configDrawer').classList.remove('open');
+}
+
+async function loadConfig() {
+  try {
+    const res = await fetch('/api/config');
+    const data = await res.json();
+    if (data.error) { $('drawerBody').innerHTML = `<div style="color:var(--red)">${esc(data.error)}</div>`; return; }
+    const text = data.config || '';
+    const pairs = [];
+    text.split('\n').forEach(line => {
+      line = line.trim();
+      if (!line || line.startsWith('#')) return;
+      const eq = line.indexOf('=');
+      if (eq < 0) return;
+      const key = line.substring(0, eq).trim();
+      let val = line.substring(eq + 1).trim();
+      /* Strip ${..:-...} wrapper */
+      const m = val.match(/^\"\$\{[^:}]*:-([^}]*)\}\"$/);
+      if (m) val = m[1];
+      else { val = val.replace(/^"|"$/g, ''); }
+      pairs.push({ key, val });
+    });
+    $('drawerBody').innerHTML = pairs.map((p, i) =>
+      `<div class="cfg-row"><label>${esc(p.key)}</label><input id="cfg-${i}" value="${esc(p.val)}"/>` +
+      `<button class="btn" onclick="saveConfig('${esc(p.key)}', $('cfg-${i}').value)">Save</button></div>`
+    ).join('');
+  } catch (e) { $('drawerBody').innerHTML = `<div style="color:var(--red)">Failed to load config</div>`; }
+}
+
+async function saveConfig(key, value) {
+  try {
+    const res = await fetch('/api/action/config', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ key, value }) });
+    const data = await res.json();
+    if (data.ok) { alert(`Saved: ${key}`); loadConfig(); }
+    else { alert('Save failed: ' + (data.error || 'unknown')); }
+  } catch (e) { alert('Save failed: ' + e.message); }
+}
+
+/* ── Time Window Selector ─────────────────────────────────── */
+function windowHours() { return currentHours; }
+
+$('timeBtns').addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON') return;
+  $('timeBtns').querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  const h = e.target.dataset.h;
+  currentHours = h ? parseInt(h, 10) : null;
+  loadHistory(currentHours);
+});
+
+$('gearBtn').addEventListener('click', openDrawer);
+
+/* ── Init ─────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  initChart();
+  refresh();
+  loadHistory(1);
+  loadAlerts();
+  loadActions();
+  setInterval(refresh, 5000);
+  setInterval(() => loadHistory(windowHours()), 30000);
+  setInterval(loadAlerts, 30000);
+  setInterval(loadActions, 60000);
+
+  if (window.location.hash.startsWith('#alert-')) {
+    const ts = decodeURIComponent(window.location.hash.replace('#alert-', ''));
+    setTimeout(() => scrollChartTo(ts), 2000);
+  }
+});
+</script>
+</body>
+</html>

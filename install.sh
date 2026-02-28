@@ -34,6 +34,14 @@ if [[ "${1:-}" == "--uninstall" ]]; then
         echo -e "  ${GREEN}✓${NC} Daemon stopped"
     fi
 
+    # Stop web server
+    if launchctl list 2>/dev/null | grep -q "com.ops.sentinel.web"; then
+        launchctl unload "$HOME/Library/LaunchAgents/com.ops.sentinel.web.plist" 2>/dev/null || true
+        echo -e "  ${GREEN}✓${NC} Web server stopped"
+    fi
+    rm -f "$HOME/Library/LaunchAgents/com.ops.sentinel.web.plist"
+    echo -e "  ${GREEN}✓${NC} Web LaunchAgent removed"
+
     # Remove LaunchAgent
     rm -f "$PLIST_DEST"
     echo -e "  ${GREEN}✓${NC} LaunchAgent removed"
@@ -67,10 +75,13 @@ cp "$SCRIPT_DIR/scripts/sentinel-daemon.sh" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/scripts/sentinel-status.sh" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/scripts/sentinel-triage.sh" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/scripts/lib/"*.sh "$INSTALL_DIR/lib/"
+cp "$SCRIPT_DIR/scripts/sentinel-webserver.py" "$INSTALL_DIR/"
+cp "$SCRIPT_DIR/scripts/sentinel-dashboard.html" "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/sentinel-daemon.sh"
 chmod +x "$INSTALL_DIR/sentinel-status.sh"
 chmod +x "$INSTALL_DIR/sentinel-triage.sh"
 echo -e "  ${GREEN}✓${NC} Scripts installed"
+echo -e "  ${GREEN}✓${NC} Web dashboard installed"
 
 # 3. Copy config (don't overwrite existing)
 if [[ ! -f "$CONFIG_DIR/sentinel.conf" ]]; then
@@ -112,6 +123,38 @@ PLIST
 
 echo -e "  ${GREEN}✓${NC} LaunchAgent installed"
 
+# Install web server LaunchAgent
+WEB_PLIST_NAME="com.ops.sentinel.web.plist"
+WEB_PLIST_DEST="$HOME/Library/LaunchAgents/$WEB_PLIST_NAME"
+
+cat > "$WEB_PLIST_DEST" <<WEBPLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ops.sentinel.web</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/python3</string>
+        <string>${INSTALL_DIR}/sentinel-webserver.py</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/sentinel-web-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/sentinel-web-stderr.log</string>
+    <key>Nice</key>
+    <integer>10</integer>
+</dict>
+</plist>
+WEBPLIST
+
+echo -e "  ${GREEN}✓${NC} Web server LaunchAgent installed"
+
 # 5. Add shell aliases
 ZSHRC="$HOME/.zshrc"
 if [[ -f "$ZSHRC" ]]; then
@@ -130,16 +173,38 @@ else
     echo -e "  ${YELLOW}~${NC} No .zshrc found — add aliases manually"
 fi
 
-# 6. DON'T start daemon automatically — let user decide
+# 6. Check for terminal-notifier (actionable notifications)
+if command -v terminal-notifier &>/dev/null; then
+    echo -e "  ${GREEN}✓${NC} terminal-notifier found — clickable notifications enabled"
+else
+    echo -e "  ${YELLOW}~${NC} terminal-notifier not found — notifications won't be clickable"
+    echo -e "    Install with: brew install terminal-notifier"
+fi
+
+# 7. Generate web auth token if not exists
+if [[ ! -f "$CONFIG_DIR/web.token" ]]; then
+    python3 -c "import secrets; print(secrets.token_hex(16))" > "$CONFIG_DIR/web.token"
+    chmod 600 "$CONFIG_DIR/web.token"
+    echo -e "  ${GREEN}✓${NC} Web auth token generated"
+else
+    echo -e "  ${YELLOW}~${NC} Web auth token exists — preserved"
+fi
+
+# 8. DON'T start daemon automatically — let user decide
 echo ""
 echo -e "${GREEN}${BOLD}OPS Sentinel Suite installed successfully!${NC}"
 echo ""
 echo "Commands:"
 echo "  sentinel-status    — Live dashboard"
 echo "  sentinel-triage    — Emergency mode"
+echo "  sentinel-dashboard — http://localhost:8888"
 echo ""
 echo "To start the daemon:"
 echo "  launchctl load $PLIST_DEST"
+echo ""
+echo "To start the web dashboard:"
+echo "  launchctl load ~/Library/LaunchAgents/com.ops.sentinel.web.plist"
+echo "  Then open: http://localhost:8888"
 echo ""
 echo "Config: $CONFIG_DIR/sentinel.conf"
 echo "Logs:   $LOG_DIR/sentinel.log"

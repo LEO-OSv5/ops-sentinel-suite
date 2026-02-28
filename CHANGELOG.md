@@ -5,6 +5,35 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-02-28
+
+### Added
+- `scripts/sentinel-webserver.py` — Python stdlib HTTP server for web dashboard (GET/POST API, token auth, local subnet restriction) — 2026-02-28
+- `scripts/sentinel-dashboard.html` — single-file web dashboard with Chart.js charts, service controls, process kill buttons, config editor, alert timeline — 2026-02-28
+- `scripts/lib/write-status.sh` — status.json + history.jsonl + actions.jsonl writer called each daemon cycle — 2026-02-28
+- `launchagents/com.ops.sentinel.web.plist` — KeepAlive LaunchAgent for web server — 2026-02-28
+- Predictions engine: linear trend extrapolation for swap/disk + kill suggestions based on action history — 2026-02-28
+- Action audit trail: all kills, restarts, and janitor actions recorded to actions.jsonl — 2026-02-28
+- Web dashboard config: WEB_PORT, WEB_TOKEN_FILE, WEB_REFRESH_SECONDS, WEB_HISTORY_DAYS, WEB_ACTIONS_DAYS — 2026-02-28
+- Token-based auth for action endpoints (generated at install, stored in web.token) — 2026-02-28
+- Notification click opens web dashboard at `#alert-{timestamp}` deep link (falls back to .txt if server down) — 2026-02-28
+
+### Changed
+- `sentinel-daemon.sh` — calls write_status after each cycle to generate dashboard data — 2026-02-28
+- `sentinel_notify()` — writes JSON alert files, clicks open web dashboard URL — 2026-02-28
+- `install.sh` — installs webserver, dashboard, web LaunchAgent, generates auth token — 2026-02-28
+- `check-pressure.sh`, `check-services.sh`, `check-files.sh` — record actions to actions.jsonl — 2026-02-28
+
+## [1.1.0] — 2026-02-27 @ 23:34
+
+### Changed
+- Replaced `osascript` notifications with `terminal-notifier` — clicking a notification now opens a rich alert file with full context (what happened, detail, recommended actions, recent log lines) instead of opening Script Editor — 2026-02-27
+- All 14 notification call sites across 5 modules now include contextual detail strings (pressure stats, service names/exit codes, backup channel status, disk usage, file counts) — 2026-02-27
+
+### Added
+- Alert summary files generated in `~/.sentinel-logs/alerts/` on every notification — auto-cleaned after 24 hours — 2026-02-27
+- `install.sh` now checks for `terminal-notifier` and suggests `brew install` if missing — 2026-02-27
+
 ## [1.0.0] — 2026-02-25 @ 00:00
 
 ### Added

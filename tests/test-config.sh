@@ -36,4 +36,12 @@ source "$SCRIPT_DIR/../config/sentinel.conf"
 assert_eq "1024" "$SWAP_WARNING_MB" "SWAP_WARNING_MB env override"
 unset SWAP_WARNING_MB
 
+
+# --- Web Dashboard config ---
+assert_eq "8888" "$WEB_PORT" "WEB_PORT default"
+assert_eq "$HOME/.sentinel-config/web.token" "$WEB_TOKEN_FILE" "WEB_TOKEN_FILE default"
+assert_eq "5" "$WEB_REFRESH_SECONDS" "WEB_REFRESH_SECONDS default"
+assert_eq "7" "$WEB_HISTORY_DAYS" "WEB_HISTORY_DAYS default"
+assert_eq "30" "$WEB_ACTIONS_DAYS" "WEB_ACTIONS_DAYS default"
+
 test_summary

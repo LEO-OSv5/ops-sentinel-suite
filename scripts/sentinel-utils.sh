@@ -122,11 +122,97 @@ SENTINEL_VERSION="0.2.0"
   # =============================================================================
   # UI WRAPPERS — argv-safe AppleScript dialogs
   # =============================================================================
+
+  # sentinel_notify — Send a macOS notification with an optional click action
+  # Usage: sentinel_notify "Title" "Message" ["Sound"] ["Detail text"]
+  #
+  # When terminal-notifier is installed:
+  #   - Creates a rich alert file with detail + recent log context
+  #   - Clicking the notification opens the alert file
+  # When not installed:
+  #   - Falls back to osascript (no click action)
   sentinel_notify() {
       local title="$1"
       local message="$2"
       local sound="${3:-Glass}"
-      osascript -e "display notification \"$message\" with title \"$title\" sound name \"$sound\"" 2>/dev/null
+      local detail="${4:-}"
+
+      if command -v terminal-notifier &>/dev/null; then
+          local alert_file=""
+
+          # Generate rich alert file with context
+          local alert_dir="$SENTINEL_LOGS/alerts"
+          mkdir -p "$alert_dir"
+          local ts
+          ts=$(date '+%Y-%m-%d_%H-%M-%S')
+          alert_file="$alert_dir/alert-${ts}.txt"
+
+          {
+              echo "═══════════════════════════════════════════════"
+              echo "  OPS SENTINEL ALERT"
+              echo "═══════════════════════════════════════════════"
+              echo ""
+              echo "  TYPE:    $title"
+              echo "  TIME:    $(date '+%Y-%m-%d %H:%M:%S')"
+              echo "  MACHINE: ${SENTINEL_MACHINE:-UNKNOWN}"
+              echo ""
+              echo "═══════════════════════════════════════════════"
+              echo ""
+              echo "$message"
+              echo ""
+              if [[ -n "$detail" ]]; then
+                  echo "─── Detail ────────────────────────────────────"
+                  echo "$detail"
+                  echo ""
+              fi
+              echo "─── What To Do ────────────────────────────────"
+              echo "  sentinel-status    — Live dashboard"
+              echo "  sentinel-triage    — Emergency intervention"
+              echo "  Log: $SENTINEL_LOGS/sentinel.log"
+              echo ""
+              echo "─── Recent Log ────────────────────────────────"
+              tail -15 "$SENTINEL_LOGS/sentinel.log" 2>/dev/null || echo "  (no log yet)"
+          } > "$alert_file"
+          # Write JSON alert for dashboard API
+          local json_alert="$alert_dir/alert-${ts}.json"
+          local severity="info"
+          if [[ "$title" == *"CRITICAL"* || "$title" == *"critical"* ]]; then severity="critical"
+          elif [[ "$title" == *"Warning"* || "$title" == *"warning"* || "$title" == *"WARNING"* ]]; then severity="warning"
+          fi
+          # JSON escape helper (local, no dependency on write-status.sh)
+          local esc_title="${title//\\/\\\\}"; esc_title="${esc_title//\"/\\\"}"
+          local esc_msg="${message//\\/\\\\}"; esc_msg="${esc_msg//\"/\\\"}"
+          local esc_detail="${detail//\\/\\\\}"; esc_detail="${esc_detail//\"/\\\"}"
+          esc_detail="${esc_detail//$'\n'/\\n}"
+          printf '{"timestamp":"%s","type":"%s","severity":"%s","message":"%s","detail":"%s"}\n' \
+              "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+              "$esc_title" "$severity" "$esc_msg" "$esc_detail" > "$json_alert"
+
+          # Clean up alerts older than 24 hours
+          find "$alert_dir" -name "alert-*.txt" -mmin +1440 -delete 2>/dev/null || true
+          find "$alert_dir" -name "alert-*.json" -mmin +1440 -delete 2>/dev/null || true
+
+          # Click action: dashboard URL if server running, else open .txt file
+          if curl -s -o /dev/null --connect-timeout 1 "http://localhost:${WEB_PORT:-8888}/api/status" 2>/dev/null; then
+              terminal-notifier \
+                  -title "$title" \
+                  -message "$message" \
+                  -sound "$sound" \
+                  -group "sentinel" \
+                  -open "http://localhost:${WEB_PORT:-8888}/#alert-${ts}" \
+                  2>/dev/null &
+          else
+              terminal-notifier \
+                  -title "$title" \
+                  -message "$message" \
+                  -sound "$sound" \
+                  -group "sentinel" \
+                  -execute "open '$alert_file'" \
+                  2>/dev/null &
+          fi
+      else
+          osascript -e "display notification \"$message\" with title \"$title\" sound name \"$sound\"" 2>/dev/null
+      fi
   }
 
   sentinel_dialog() {

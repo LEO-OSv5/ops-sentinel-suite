@@ -182,7 +182,13 @@ _flush_queue() {
     # Clean up empty category dirs in queue
     find "$JANITOR_FALLBACK_QUEUE" -type d -empty -delete 2>/dev/null || true
 
-    sentinel_notify "Sentinel" "Flushed $queue_count queued files to OPS-mini" "Glass"
+    sentinel_notify "Sentinel" "Flushed $queue_count queued files to OPS-mini" "Glass" \
+        "File Janitor: Queue Flush
+Files moved: $queue_count
+Destination: ${JANITOR_DESTINATION}
+
+Previously queued files (from when OPS-mini was disconnected)
+have been sorted and moved to OPS-mini."
 }
 
 # =============================================================================
@@ -227,6 +233,7 @@ check_files() {
 
     if (( sorted_count > 0 )); then
         log_info "File janitor: sorted $sorted_count file(s)"
+        type record_action &>/dev/null && record_action "janitor" "sort" "files_moved=$sorted_count"
     fi
 
     return 0
