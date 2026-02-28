@@ -41,6 +41,7 @@ source "$SCRIPT_DIR/lib/check-services.sh"
 source "$SCRIPT_DIR/lib/check-backups.sh"
 source "$SCRIPT_DIR/lib/check-disk.sh"
 source "$SCRIPT_DIR/lib/check-files.sh"
+source "$SCRIPT_DIR/lib/write-status.sh"
 
 # Cycle counter (persisted across daemon restarts)
 CYCLE_FILE="$SENTINEL_STATE/cycle-counter"
@@ -88,6 +89,9 @@ run_cycle() {
 
     # ─── LOG ROTATION ───
     log_rotate "$SENTINEL_LOGS/sentinel.log" "${LOG_MAX_LINES:-5000}"
+
+    # ─── WRITE STATUS JSON (for web dashboard) ───
+    write_status || true
 
     log_info "Cycle #${CYCLE_COUNT} complete"
     echo "cycle #${CYCLE_COUNT} complete"

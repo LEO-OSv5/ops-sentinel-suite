@@ -43,6 +43,14 @@ assert_contains "$log_content" "starting" "log contains cycle start"
 assert_contains "$log_content" "complete" "log contains cycle complete"
 
 # --- Test 4: Cycle counter persisted ---
+
+# --- Test: status.json created after cycle ---
+echo "  -- Test: status.json created --"
+assert_file_exists "$SENTINEL_LOGS/status.json" "daemon creates status.json"
+
+# --- Test: history.jsonl created after cycle ---
+echo "  -- Test: history.jsonl created --"
+assert_file_exists "$SENTINEL_LOGS/history.jsonl" "daemon creates history.jsonl"
 echo "  -- Test: cycle counter persisted --"
 assert_file_exists "$SENTINEL_STATE/cycle-counter" "cycle counter file exists"
 cycle_val=$(cat "$SENTINEL_STATE/cycle-counter")
