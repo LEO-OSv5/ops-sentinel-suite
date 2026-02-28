@@ -122,11 +122,71 @@ SENTINEL_VERSION="0.2.0"
   # =============================================================================
   # UI WRAPPERS — argv-safe AppleScript dialogs
   # =============================================================================
+
+  # sentinel_notify — Send a macOS notification with an optional click action
+  # Usage: sentinel_notify "Title" "Message" ["Sound"] ["Detail text"]
+  #
+  # When terminal-notifier is installed:
+  #   - Creates a rich alert file with detail + recent log context
+  #   - Clicking the notification opens the alert file
+  # When not installed:
+  #   - Falls back to osascript (no click action)
   sentinel_notify() {
       local title="$1"
       local message="$2"
       local sound="${3:-Glass}"
-      osascript -e "display notification \"$message\" with title \"$title\" sound name \"$sound\"" 2>/dev/null
+      local detail="${4:-}"
+
+      if command -v terminal-notifier &>/dev/null; then
+          local alert_file=""
+
+          # Generate rich alert file with context
+          local alert_dir="$SENTINEL_LOGS/alerts"
+          mkdir -p "$alert_dir"
+          local ts
+          ts=$(date '+%Y-%m-%d_%H-%M-%S')
+          alert_file="$alert_dir/alert-${ts}.txt"
+
+          {
+              echo "═══════════════════════════════════════════════"
+              echo "  OPS SENTINEL ALERT"
+              echo "═══════════════════════════════════════════════"
+              echo ""
+              echo "  TYPE:    $title"
+              echo "  TIME:    $(date '+%Y-%m-%d %H:%M:%S')"
+              echo "  MACHINE: ${SENTINEL_MACHINE:-UNKNOWN}"
+              echo ""
+              echo "═══════════════════════════════════════════════"
+              echo ""
+              echo "$message"
+              echo ""
+              if [[ -n "$detail" ]]; then
+                  echo "─── Detail ────────────────────────────────────"
+                  echo "$detail"
+                  echo ""
+              fi
+              echo "─── What To Do ────────────────────────────────"
+              echo "  sentinel-status    — Live dashboard"
+              echo "  sentinel-triage    — Emergency intervention"
+              echo "  Log: $SENTINEL_LOGS/sentinel.log"
+              echo ""
+              echo "─── Recent Log ────────────────────────────────"
+              tail -15 "$SENTINEL_LOGS/sentinel.log" 2>/dev/null || echo "  (no log yet)"
+          } > "$alert_file"
+
+          # Clean up alerts older than 24 hours
+          find "$alert_dir" -name "alert-*.txt" -mmin +1440 -delete 2>/dev/null || true
+
+          terminal-notifier \
+              -title "$title" \
+              -message "$message" \
+              -sound "$sound" \
+              -group "sentinel" \
+              -execute "open '$alert_file'" \
+              2>/dev/null &
+      else
+          osascript -e "display notification \"$message\" with title \"$title\" sound name \"$sound\"" 2>/dev/null
+      fi
   }
 
   sentinel_dialog() {

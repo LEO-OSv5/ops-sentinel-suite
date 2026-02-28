@@ -5,6 +5,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-02-27 @ 23:34
+
+### Changed
+- Replaced `osascript` notifications with `terminal-notifier` — clicking a notification now opens a rich alert file with full context (what happened, detail, recommended actions, recent log lines) instead of opening Script Editor — 2026-02-27
+- All 14 notification call sites across 5 modules now include contextual detail strings (pressure stats, service names/exit codes, backup channel status, disk usage, file counts) — 2026-02-27
+
+### Added
+- Alert summary files generated in `~/.sentinel-logs/alerts/` on every notification — auto-cleaned after 24 hours — 2026-02-27
+- `install.sh` now checks for `terminal-notifier` and suggests `brew install` if missing — 2026-02-27
+
 ## [1.0.0] — 2026-02-25 @ 00:00
 
 ### Added

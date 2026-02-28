@@ -64,7 +64,15 @@ check_disk() {
     if (( free_gb < DISK_CRITICAL_GB )); then
         log_error "Disk CRITICAL: ${free_gb} GB free (threshold: ${DISK_CRITICAL_GB} GB)"
         if check_cooldown "disk-critical" 1800; then
-            sentinel_notify "Sentinel" "NODE SSD critically low: ${free_gb} GB free" "Basso"
+            sentinel_notify "Sentinel" "NODE SSD critically low: ${free_gb} GB free" "Basso" \
+                "Disk: Root Volume (/)
+Free: ${free_gb} GB (CRITICAL threshold: ${DISK_CRITICAL_GB} GB)
+
+CRITICAL — SSD is nearly full. Risk of system instability.
+Actions to consider:
+  sentinel-triage         — Free RAM (reduces swap file growth)
+  du -sh ~/Downloads/*    — Check Downloads for large files
+  brew cleanup             — Clear Homebrew cache"
             set_cooldown "disk-critical"
         fi
         return 2
@@ -74,7 +82,12 @@ check_disk() {
     if (( free_gb < DISK_WARNING_GB )); then
         log_warn "Disk warning: ${free_gb} GB free (threshold: ${DISK_WARNING_GB} GB)"
         if check_cooldown "disk-warn" 3600; then
-            sentinel_notify "Sentinel" "NODE SSD getting low: ${free_gb} GB free" "Submarine"
+            sentinel_notify "Sentinel" "NODE SSD getting low: ${free_gb} GB free" "Submarine" \
+                "Disk: Root Volume (/)
+Free: ${free_gb} GB (warning threshold: ${DISK_WARNING_GB} GB)
+
+Not critical yet — monitoring. Consider clearing caches
+or moving large files to OPS-mini."
             set_cooldown "disk-warn"
         fi
         return 1

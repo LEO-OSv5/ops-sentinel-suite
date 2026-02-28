@@ -130,7 +130,15 @@ else
     echo -e "  ${YELLOW}~${NC} No .zshrc found — add aliases manually"
 fi
 
-# 6. DON'T start daemon automatically — let user decide
+# 6. Check for terminal-notifier (actionable notifications)
+if command -v terminal-notifier &>/dev/null; then
+    echo -e "  ${GREEN}✓${NC} terminal-notifier found — clickable notifications enabled"
+else
+    echo -e "  ${YELLOW}~${NC} terminal-notifier not found — notifications won't be clickable"
+    echo -e "    Install with: brew install terminal-notifier"
+fi
+
+# 7. DON'T start daemon automatically — let user decide
 echo ""
 echo -e "${GREEN}${BOLD}OPS Sentinel Suite installed successfully!${NC}"
 echo ""

@@ -29,7 +29,13 @@ _check_ops_sync() {
     if [[ -z "$sync_status" ]]; then
         log_warn "OPS sync agent not registered"
         if check_cooldown "backup-sync" 1800; then
-            sentinel_notify "Sentinel" "OPS sync agent is not registered — backups may not be running" "Submarine"
+            sentinel_notify "Sentinel" "OPS sync agent is not registered — backups may not be running" "Submarine" \
+                "Backup Channel: OPS Sync Agent (com.ops.sync)
+Status: NOT REGISTERED in launchctl
+
+The OPS sync LaunchAgent is not loaded. Backups to GitHub
+may not be running. To fix:
+  launchctl load ~/Library/LaunchAgents/com.ops.sync.plist"
             set_cooldown "backup-sync"
         fi
         return 1
@@ -68,7 +74,13 @@ _check_github_freshness() {
 
     if [[ "$has_stale" == "true" ]]; then
         if check_cooldown "backup-github" 3600; then
-            sentinel_notify "Sentinel" "Some repos haven't been pushed in ${GITHUB_STALE_HOURS}+ hours" "Submarine"
+            sentinel_notify "Sentinel" "Some repos haven't been pushed in ${GITHUB_STALE_HOURS}+ hours" "Submarine" \
+                "Backup Channel: GitHub Push Freshness
+Threshold: ${GITHUB_STALE_HOURS} hours
+
+One or more monitored repos haven't had a commit/push
+in over ${GITHUB_STALE_HOURS} hours. Check the sentinel log
+for which repos are stale."
             set_cooldown "backup-github"
         fi
         return 1
@@ -82,7 +94,13 @@ _check_ops_mini() {
     if ! mount 2>/dev/null | grep -q "OPS-mini"; then
         log_warn "OPS-mini not mounted"
         if check_cooldown "backup-opsmini" 3600; then
-            sentinel_notify "Sentinel" "OPS-mini disconnected — backups paused" "Submarine"
+            sentinel_notify "Sentinel" "OPS-mini disconnected — backups paused" "Submarine" \
+                "Backup Channel: OPS-mini (2TB External)
+Status: NOT MOUNTED
+
+The OPS-mini drive is not connected or not mounted.
+Physical backups are paused until it's reconnected.
+Plug in the drive or check: mount | grep OPS-mini"
             set_cooldown "backup-opsmini"
         fi
         return 1
@@ -101,7 +119,14 @@ _check_ops_mini() {
             local age_hours=$(( age_seconds / 3600 ))
             log_warn "OPS-mini backup stale: last write ${age_hours}h ago"
             if check_cooldown "backup-opsmini-stale" 3600; then
-                sentinel_notify "Sentinel" "OPS-mini backup is ${age_hours} hours old" "Submarine"
+                sentinel_notify "Sentinel" "OPS-mini backup is ${age_hours} hours old" "Submarine" \
+                    "Backup Channel: OPS-mini (2TB External)
+Status: MOUNTED but STALE
+Last write: ${age_hours} hours ago (threshold: ${OPS_MINI_STALE_HOURS}h)
+
+The drive is connected but hasn't been written to recently.
+The sync agent may not be running, or there may be a
+permissions issue. Check: ls -la $OPS_MINI_PATH"
                 set_cooldown "backup-opsmini-stale"
             fi
             return 1
